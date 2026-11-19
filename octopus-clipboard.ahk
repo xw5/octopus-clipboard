@@ -27,6 +27,191 @@ if (DirExist(OLD_DATA_DIR) && !DirExist(DATA_DIR)) {
 }
 ; ---------------------------------------------------------------------
 
+; ----------------------- 国际化（中文 / English） ---------------------
+; 所有界面文本集中于 L10N：[1]=中文，[2]=English。
+; 语言优先级：settings.ini 显式设置（用户手动切换过） > 系统 UI 语言（首次运行）。
+; 系统 UI 语言用 GetUserDefaultUILanguage 的 LANGID，低 10 位 primary=0x04 即中文（简/繁/港澳新）。
+; 切换语言会写入 settings.ini 并 Reload，重建全部窗口 / 菜单。
+_iniLang := IniRead(SETTINGS_FILE, "General", "Language", "")
+if (_iniLang = "zh" || _iniLang = "en") {
+    LANG := _iniLang
+} else {
+    _sysLang := DllCall("GetUserDefaultUILanguage", "UShort")
+    if !_sysLang
+        _sysLang := DllCall("GetSystemDefaultUILanguage", "UShort")
+    LANG := ((_sysLang & 0x3FF) = 0x04) ? "zh" : "en"
+}
+LANG_IDX := (LANG = "en") ? 2 : 1
+UI_FONT := (LANG = "en") ? "Segoe UI" : "Microsoft YaHei UI"
+
+L10N := Map(
+    ; 通用 / 主窗口
+    "app.title",         ["octopus-clipboard — 剪贴板历史", "octopus-clipboard — Clipboard History"],
+    "col.pin",           ["钉", "Pin"],
+    "col.type",          ["类型", "Type"],
+    "col.content",       ["内容", "Content"],
+    "col.time",          ["时间", "Time"],
+    "empty.selection",   ["未选择条目", "No item selected"],
+    "hint.imageClick",   ["点击图片查看大图（预览窗口内滚轮缩放）", "Click image to view full size (scroll to zoom in preview)"],
+    "hint.clickBig",     ["点击查看大图", "Click to view full size"],
+    "btn.fileList",      ["文件列表", "File List"],
+    "btn.imagePreview",  ["图片预览", "Image Preview"],
+    "btn.removePath",    ["删除选中路径", "Remove Selected Path"],
+    "btn.saveChanges",   ["保存修改", "Save Changes"],
+    "msg.imageLoadFail", ["[图片加载失败]", "[Failed to load image]"],
+
+    ; 快捷键名称
+    "hk.ShowHistory", ["显示历史窗口", "Show History Window"],
+    "hk.Paste",       ["粘贴选中项", "Paste Selected Item"],
+    "hk.HideMain",    ["隐藏历史窗口", "Hide History Window"],
+    "hk.Delete",      ["删除选中项", "Delete Selected Item"],
+    "hk.Pin",         ["钉住 / 取消钉住", "Pin / Unpin"],
+    "hk.CopyOnly",    ["仅复制到剪贴板", "Copy to Clipboard Only"],
+    "hk.SelectAll",   ["全选列表", "Select All Rows"],
+    "hk.HideBig",     ["关闭大图预览", "Close Image Preview"],
+
+    ; 右键菜单
+    "ctx.paste",    ["粘贴此项(&P)", "Paste Here(&P)"],
+    "ctx.copyOnly", ["仅复制到剪贴板(&C)", "Copy to Clipboard Only(&C)"],
+    "ctx.open",     ["打开位置(&O)", "Open Location(&O)"],
+    "ctx.edit",     ["用画图编辑(&E)", "Edit with Paint(&E)"],
+    "ctx.pin",      ["钉住 / 取消钉住(&S)", "Pin / Unpin(&S)"],
+    "ctx.delete",   ["删除(&D)", "Delete(&D)"],
+
+    ; 「···」菜单
+    "menu.settings",    ["设置", "Settings"],
+    "menu.recordOff",   ["关闭记录", "Pause Recording"],
+    "menu.recordOn",    ["开启记录", "Resume Recording"],
+    "menu.clear",       ["清空记录", "Clear History"],
+    "menu.import",      ["导入记录", "Import History"],
+    "menu.export",      ["导出记录", "Export History"],
+    "menu.language",    ["语言：切换到 English", "Language: Switch to 中文"],
+
+    ; 托盘菜单
+    "tray.open",          ["打开剪贴板历史(&O)", "Open Clipboard History(&O)"],
+    "tray.clearKeepPin",  ["清空历史(保留钉住)", "Clear History (Keep Pinned)"],
+    "tray.clearAll",      ["清空全部(&A)（不可恢复）", "Clear All(&A) (Irreversible)"],
+    "tray.autostart",     ["开机自启", "Start with Windows"],
+    "tray.settings",      ["设置(&S)...", "Settings(&S)..."],
+    "tray.exit",          ["退出(&X)", "Exit(&X)"],
+    "tip.recordOn",       ["剪贴板记录已开启", "Clipboard recording on"],
+    "tip.recordOff",      ["剪贴板记录已关闭", "Clipboard recording off"],
+
+    ; 类型 / 预览
+    "type.text",        ["文本", "Text"],
+    "type.image",       ["图片", "Image"],
+    "type.files",       ["文件", "Files"],
+    "preview.imageTag", ["[图片 {1}x{2}]", "[Image {1}x{2}]"],
+    "preview.allImages",["[图片]", "[Image]"],
+    "preview.allFiles", ["[文件]", "[Files]"],
+    "msg.unsaved",      ["预览内容已修改但未保存。`n`n是：保存修改`n否：放弃修改`n取消：返回当前项",
+                         "Preview has unsaved changes.`n`nYes: Save changes`nNo: Discard changes`nCancel: Return to current item"],
+    "title.unsaved",    ["未保存的修改", "Unsaved Changes"],
+    "msg.emptyText",    ["文本内容不能为空。", "Text cannot be empty."],
+    "msg.emptyFiles",   ["文件列表不能为空。", "File list cannot be empty."],
+    "title.cannotSave", ["无法保存", "Cannot Save"],
+    "title.saveChanges",["保存修改", "Save Changes"],
+    "msg.saveMode",     ["请选择保存方式：`n`n是：新增一条记录`n否：替换当前记录`n取消：不保存",
+                         "Choose how to save:`n`nYes: Add a new record`nNo: Replace current record`nCancel: Do not save"],
+    "hint.gridSome",    ["共 {1} 张图片（显示前 {2} 张） · 点击查看大图", "{1} images (showing first {2}) · Click to view full size"],
+    "hint.gridAll",     ["共 {1} 张图片 · 点击查看大图", "{1} images · Click to view full size"],
+    "big.title",        ["图片预览", "Image Preview"],
+    "big.hint",         ["滚轮缩放 · Esc 关闭", "Scroll to zoom · Esc to close"],
+    "big.titleFmt",     ["图片预览 {1}x{2} — {3}%（滚轮缩放，Esc 关闭）", "Image Preview {1}x{2} — {3}% (Scroll to zoom, Esc to close)"],
+
+    ; 清空 / 导入 / 导出
+    "msg.clearAll",     ["确定清空全部剪贴板记录吗？`n`n这将删除所有记录（包括钉住项）及其图片文件，`n删除后不可恢复！`n`n建议先「导出记录」备份。",
+                         "Clear all clipboard records?`n`nThis deletes every record (including pinned ones) and its image files.`nThis cannot be undone!`n`nExport a backup first is recommended."],
+    "title.clearAll",   ["清空记录 — 不可恢复", "Clear History — Irreversible"],
+    "tip.cleared",      ["已清空全部记录", "All records cleared"],
+    "dlg.exportTitle",  ["导出剪贴板记录", "Export Clipboard History"],
+    "dlg.backupFilter", ["剪贴板备份 (*.ahkcb):*.ahkcb", "Clipboard Backup (*.ahkcb):*.ahkcb"],
+    "msg.writeFail",    ["无法写入文件：`n", "Cannot write file:`n"],
+    "title.exportFail", ["导出失败", "Export Failed"],
+    "tip.exported",     ["已导出 {1} 条记录`n", "Exported {1} records`n"],
+    "dlg.importTitle",  ["选择备份文件", "Select Backup File"],
+    "msg.readFail",     ["无法读取文件：`n", "Cannot read file:`n"],
+    "title.importFail", ["导入失败", "Import Failed"],
+    "msg.invalidBackup",["不是有效的 octopus-clipboard 备份文件。", "Not a valid octopus-clipboard backup file."],
+    "tip.imported",     ["已导入 {1} 条记录（含 {2} 张图片）", "Imported {1} records ({2} images)"],
+
+    ; 设置窗口
+    "settings.title",      ["octopus-clipboard 设置", "octopus-clipboard Settings"],
+    "settings.general",    ["常规", "General"],
+    "settings.maxRecords", ["最大记录条数（0-999，0=不限）：", "Max records (0-999, 0 = unlimited):"],
+    "settings.autostart",  ["开机自启动", "Start with Windows"],
+    "settings.fileNote",   ["设置保存在 settings.ini", "Saved in settings.ini"],
+    "settings.hotkeys",    ["快捷键", "Hotkeys"],
+    "settings.hkHelpTop",  ["左侧：快捷键控件直接按键录入　右侧：点击「选择」从列表勾选（可选 Esc 等键）",
+                            "Left: press keys in the hotkey box   Right: click Select to choose from a list (e.g. Esc)"],
+    "settings.global",     ["全局", "Global"],
+    "settings.scopeMain",  ["历史窗口内（仅对应窗口 / 控件生效）", "In history window (active window/control only)"],
+    "settings.scopeBig",   ["大图预览窗口内", "In image preview window"],
+    "settings.hkHelpBottom",["点击「选择」按钮可从列表勾选常用键，含 Esc 等控件无法直接录入的键。",
+                            "Click Select to pick common keys, including Esc which the hotkey box cannot capture."],
+    "settings.hkHelpSync", ["勾选后即刻同步到左侧控件，保存后立即生效。", "Selection syncs to the box at once; changes apply after Save."],
+    "settings.btnRestore", ["恢复默认", "Restore Defaults"],
+    "settings.btnSave",    ["保存", "Save"],
+    "settings.btnCancel",  ["取消", "Cancel"],
+    "settings.btnLanguage",["切换为 English", "Switch to 中文"],
+    "msg.maxInvalid",      ["最大记录条数必须是 0-999 的整数。", "Max records must be an integer from 0 to 999."],
+
+    ; 快捷键选择弹窗
+    "picker.title",   ["选择快捷键", "Choose Hotkey"],
+    "picker.help",    ["勾选修饰键（可多选）+ 选择主键（单选），下方自动组合成快捷键。",
+                       "Check modifiers (multiple) + select a base key (single); the hotkey is composed below."],
+    "picker.modifiers",["修饰键（可多选）", "Modifiers (multiple)"],
+    "picker.baseKey", ["主键（单选）", "Base Key (single)"],
+    "picker.keyCol",  ["按键", "Key"],
+    "picker.result",  ["组合结果", "Result"],
+    "picker.ahkName", ["AHK 键名：", "AHK key:"],
+    "picker.display", ["显示为：", "Displayed as:"],
+    "picker.tip",     ["提示：不选修饰键即为单独主键（如 Esc）。", "Tip: with no modifier, the base key alone is used (e.g. Esc)."],
+    "picker.ok",      ["确定", "OK"],
+    "picker.noBase",  ["（请选择主键）", "(Select a base key)"],
+    "msg.pickerInvalid",["请先勾选修饰键并选择主键，组合出有效快捷键。", "Check modifiers and select a base key to build a valid hotkey."],
+
+    ; 快捷键辅助
+    "hk.notSet",          ["未设置", "Not set"],
+    "msg.hkEmpty",        ['快捷键“{1}”为空或不完整。', 'Hotkey "{1}" is empty or incomplete.'],
+    "msg.hkNeedMod",      ['快捷键“{1}”必须包含 Ctrl / Alt / Shift / Win 中的至少一个修饰键。',
+                           'Hotkey "{1}" must include at least one modifier: Ctrl / Alt / Shift / Win.'],
+    "msg.hkConflictGlobal",['“{1}（全局）”不能与“{2}”使用相同快捷键。', 'The global hotkey "{1}" cannot be the same as "{2}".'],
+    "msg.hkConflictDup",  ['同一范围内存在重复快捷键，请为“{1}”换一个组合。', 'Duplicate hotkey in the same scope. Choose another combination for "{1}".'],
+    "title.hkInvalid",    ["快捷键无效", "Invalid Hotkey"],
+    "title.hkConflict",   ["快捷键冲突", "Hotkey Conflict"],
+    "btn.select",         ["选择 {1}", "Select {1}"],
+    "btn.selectDots",     ["选择...", "Select..."],
+    "hint.main",          ["{1} 粘贴 · 双击图片看大图 · 右键菜单：仅复制/打开/编辑 · {2} 钉住 · {3} 删除 · {4} 隐藏",
+                           "{1} Paste · Double-click image to enlarge · Right-click: Copy/Open/Edit · {2} Pin · {3} Delete · {4} Hide"]
+)
+
+Tr(key) {
+    global L10N, LANG_IDX
+    return L10N.Has(key) ? L10N[key][LANG_IDX] : key
+}
+
+TrF(key, vals*) {
+    s := Tr(key)
+    for i, v in vals
+        s := StrReplace(s, "{" i "}", v)
+    return s
+}
+
+SetLanguage(newLang) {
+    global LANG, SETTINGS_FILE
+    if (newLang != "zh" && newLang != "en" || newLang = LANG)
+        return
+    IniWrite(newLang, SETTINGS_FILE, "General", "Language")
+    try SaveHistory()   ; Reload 前落盘，避免历史丢失
+    Reload
+}
+
+ToggleLanguage() {
+    global LANG
+    SetLanguage((LANG = "en") ? "zh" : "en")
+}
+
 ; ----------------------- 配色（小清新主题） ---------------------------
 ; AHK v2 颜色为 RGB 十六进制（RRGGBB）
 C_BG      := "F7F9F8"   ; 窗口米白背景
@@ -61,14 +246,14 @@ HK_CTRL    := Map()
 HK_EDIT    := Map()   ; id -> 实际键名字符串（弹窗勾选或控件录制的最终值）
 HK_BTN     := Map()   ; id -> 右侧「选择...」按钮，显示友好键名
 HK_LABEL   := Map(
-    "ShowHistory", "显示历史窗口",
-    "Paste",       "粘贴选中项",
-    "HideMain",    "隐藏历史窗口",
-    "Delete",      "删除选中项",
-    "Pin",         "钉住 / 取消钉住",
-    "CopyOnly",    "仅复制到剪贴板",
-    "SelectAll",   "全选列表",
-    "HideBig",     "关闭大图预览"
+    "ShowHistory", Tr("hk.ShowHistory"),
+    "Paste",       Tr("hk.Paste"),
+    "HideMain",    Tr("hk.HideMain"),
+    "Delete",      Tr("hk.Delete"),
+    "Pin",         Tr("hk.Pin"),
+    "CopyOnly",    Tr("hk.CopyOnly"),
+    "SelectAll",   Tr("hk.SelectAll"),
+    "HideBig",     Tr("hk.HideBig")
 )
 HK_CONTEXT := Map(
     "ShowHistory", "Global",
@@ -185,16 +370,16 @@ SigOf(type, data, meta) {
 }
 
 ; ----------------------- 主窗口 --------------------------------------
-main := Gui("+Resize +MinSize640x420", "octopus-clipboard — 剪贴板历史")
+main := Gui("+Resize +MinSize640x420", Tr("app.title"))
 main.BackColor := C_BG
-main.SetFont("s10 c" C_TEXT, "Microsoft YaHei UI")
+main.SetFont("s10 c" C_TEXT, UI_FONT)
 edSearch := main.AddEdit("x8 y8 w628 h26 Background" C_SURFACE, "")
 btnMore  := main.AddButton("x642 y8 w50 h26", "···")
 main.SetFont("s9 c" C_MUTED)
 hint := main.AddText("x8 y38 w600", "")
 lblCount := main.AddText("x596 y38 w96 Right c" C_MUTED, "0/0")
 main.SetFont("s10 c" C_TEXT)
-lv := main.AddListView("x8 y58 w340 h390 -Grid NoSortHdr Background" C_SURFACE " c" C_TEXT, ["钉", "类型", "内容", "时间"])
+lv := main.AddListView("x8 y58 w340 h390 -Grid NoSortHdr Background" C_SURFACE " c" C_TEXT, [Tr("col.pin"), Tr("col.type"), Tr("col.content"), Tr("col.time")])
 lv.ModifyCol(1, 26)
 lv.ModifyCol(2, 40)
 lv.ModifyCol(3, 250)
@@ -206,13 +391,13 @@ previewIdx := 0, previewRow := 0, previewKind := ""
 previewLoading := false, previewDirty := false, previewOriginal := ""
 previewMode := false, previewImgList := [], previewHasModeBtn := false
 
-txtEmpty   := main.AddText("Hidden Center c" C_MUTED, "未选择条目")
+txtEmpty   := main.AddText("Hidden Center c" C_MUTED, Tr("empty.selection"))
 editPrev   := main.AddEdit("Hidden Multi VScroll Background" C_SURFACE, "")
 picPreview := main.AddPicture("Hidden Background" C_IMAGEBG, "")
-picHint    := main.AddText("Hidden Center c" C_MUTED, "点击图片查看大图（预览窗口内滚轮缩放）")
-btnPreviewMode := main.AddButton("Hidden", "文件列表")
-btnDelPath     := main.AddButton("Hidden", "删除选中路径")
-btnSavePrev    := main.AddButton("Hidden", "保存修改")
+picHint    := main.AddText("Hidden Center c" C_MUTED, Tr("hint.imageClick"))
+btnPreviewMode := main.AddButton("Hidden", Tr("btn.fileList"))
+btnDelPath     := main.AddButton("Hidden", Tr("btn.removePath"))
+btnSavePrev    := main.AddButton("Hidden", Tr("btn.saveChanges"))
 
 ; 多图网格控件池（最多 12 张）
 picPool   := []
@@ -256,13 +441,13 @@ GuiResize(g, minmax, w, h) {
 
 ; 右键菜单
 menuCtx := Menu()
-menuCtx.Add("粘贴此项(&P)", (*) => PasteSelected())
-menuCtx.Add("仅复制到剪贴板(&C)", (*) => CopySelectedOnly())
-menuCtx.Add("打开位置(&O)", (*) => OpenSelected())
-menuCtx.Add("用画图编辑(&E)", (*) => EditSelected())
+menuCtx.Add(Tr("ctx.paste"), (*) => PasteSelected())
+menuCtx.Add(Tr("ctx.copyOnly"), (*) => CopySelectedOnly())
+menuCtx.Add(Tr("ctx.open"), (*) => OpenSelected())
+menuCtx.Add(Tr("ctx.edit"), (*) => EditSelected())
 menuCtx.Add()
-menuCtx.Add("钉住 / 取消钉住(&S)", (*) => TogglePinSelected())
-menuCtx.Add("删除(&D)", (*) => DeleteSelected())
+menuCtx.Add(Tr("ctx.pin"), (*) => TogglePinSelected())
+menuCtx.Add(Tr("ctx.delete"), (*) => DeleteSelected())
 
 ShowContextMenu(ctrl, item, isRightClick, x, y) {
     global menuCtx
@@ -275,12 +460,14 @@ menuMore := Menu()
 ShowMoreMenu(*) {
     global menuMore, recordEnabled, btnMore, main
     menuMore.Delete()
-    menuMore.Add("设置", (*) => ShowSettings())
-    menuMore.Add(recordEnabled ? "关闭记录" : "开启记录", (*) => ToggleRecord())
+    menuMore.Add(Tr("menu.settings"), (*) => ShowSettings())
+    menuMore.Add(recordEnabled ? Tr("menu.recordOff") : Tr("menu.recordOn"), (*) => ToggleRecord())
     menuMore.Add()
-    menuMore.Add("清空记录", (*) => ClearAllRecords())
-    menuMore.Add("导入记录", (*) => ImportHistory())
-    menuMore.Add("导出记录", (*) => ExportHistory())
+    menuMore.Add(Tr("menu.clear"), (*) => ClearAllRecords())
+    menuMore.Add(Tr("menu.import"), (*) => ImportHistory())
+    menuMore.Add(Tr("menu.export"), (*) => ExportHistory())
+    menuMore.Add()
+    menuMore.Add(Tr("menu.language"), (*) => ToggleLanguage())
     ; 精确定位到「···」按钮正下方：控件客户区坐标 → 屏幕坐标
     CoordMode("Menu", "Screen")
     btnMore.GetPos(&bx, &by, &bw, &bh)
@@ -295,7 +482,7 @@ ToggleRecord() {
     global recordEnabled, SETTINGS_FILE
     recordEnabled := !recordEnabled
     IniWrite(recordEnabled ? "1" : "0", SETTINGS_FILE, "General", "RecordEnabled")
-    TrayTip(recordEnabled ? "剪贴板记录已开启" : "剪贴板记录已关闭", "octopus-clipboard", "Iconi")
+    TrayTip(recordEnabled ? Tr("tip.recordOn") : Tr("tip.recordOff"), "octopus-clipboard", "Iconi")
 }
 
 guiReady := true
@@ -315,16 +502,17 @@ SetTimer(UpdateHotkeyContext, 100)
 UpdateHint()
 
 A_TrayMenu.Delete()
-A_TrayMenu.Add("打开剪贴板历史(&O)", (*) => ShowMain())
+A_TrayMenu.Add(Tr("tray.open"), (*) => ShowMain())
 A_TrayMenu.Add()
-A_TrayMenu.Add("清空历史(保留钉住)", (*) => ClearHistory(true))
-A_TrayMenu.Add("清空全部(&A)（不可恢复）", (*) => ClearAllRecords())
+A_TrayMenu.Add(Tr("tray.clearKeepPin"), (*) => ClearHistory(true))
+A_TrayMenu.Add(Tr("tray.clearAll"), (*) => ClearAllRecords())
 A_TrayMenu.Add()
-A_TrayMenu.Add("开机自启", ToggleAutostart)
-A_TrayMenu.Add("设置(&S)...", (*) => ShowSettings())
+A_TrayMenu.Add(Tr("tray.autostart"), ToggleAutostart)
+A_TrayMenu.Add(Tr("tray.settings"), (*) => ShowSettings())
+A_TrayMenu.Add(Tr("menu.language"), (*) => ToggleLanguage())
 A_TrayMenu.Add()
-A_TrayMenu.Add("退出(&X)", (*) => ExitApp())
-A_TrayMenu.Default := "打开剪贴板历史(&O)"
+A_TrayMenu.Add(Tr("tray.exit"), (*) => ExitApp())
+A_TrayMenu.Default := Tr("tray.open")
 A_TrayMenu.Click := 1
 ; 迁移旧启动项名称，保持开机自启状态不丢失
 _oldLnk := A_Startup "\octopus-clipboard.lnk"
@@ -333,7 +521,7 @@ if (FileExist(_oldLnk) && !FileExist(_newLnk)) {
     try FileMove(_oldLnk, _newLnk)
 }
 if FileExist(_newLnk)
-    A_TrayMenu.ToggleCheck("开机自启")
+    A_TrayMenu.ToggleCheck(Tr("tray.autostart"))
 
 OnExit((*) => SaveHistory())
 
@@ -384,9 +572,9 @@ UpdateCountLabel() {
 
 TypeName(t) {
     switch t {
-        case "text":  return "文本"
-        case "image": return "图片"
-        case "files": return "文件"
+        case "text":  return Tr("type.text")
+        case "image": return Tr("type.image")
+        case "files": return Tr("type.files")
     }
     return t
 }
@@ -398,7 +586,7 @@ PreviewOf(item) {
             return (StrLen(s) > 150) ? SubStr(s, 1, 150) "…" : s
         case "image":
             wh := StrSplit(item.meta "|", "|")
-            return "[图片 " wh[1] "x" wh[2] "]"
+            return TrF("preview.imageTag", wh[1], wh[2])
         case "files":
             names := ""
             imgs := 0
@@ -408,7 +596,7 @@ PreviewOf(item) {
                 if (ImagePathFromText(p) != "")
                     imgs++
             }
-            tag := (imgs > 0 && imgs = item.data.Length) ? "[图片]" : "[文件]"
+            tag := (imgs > 0 && imgs = item.data.Length) ? Tr("preview.allImages") : Tr("preview.allFiles")
             return tag " " names
     }
     return ""
@@ -417,7 +605,7 @@ PreviewOf(item) {
 FullTextOf(item) {
     switch item.type {
         case "files": return Join(item.data, "`n")
-        case "image": return "图片"
+        case "image": return Tr("type.image")
         default:      return item.data
     }
 }
@@ -471,7 +659,7 @@ UpdatePreview() {
         previewOriginal := ""
         previewMode := false
         previewImgList := []
-        ShowEmptyPreview("未选择条目")
+        ShowEmptyPreview(Tr("empty.selection"))
         return
     }
     if (previewDirty && idx = previewIdx) {
@@ -508,13 +696,13 @@ UpdatePreview() {
         if ShowImageInPreview(imgList[1]) {
             if (item.type = "files") {
                 previewImgList := imgList
-                btnPreviewMode.Text := "文件列表"
+                btnPreviewMode.Text := Tr("btn.fileList")
                 ShowPreviewModeButton()
             }
             return
         }
         if (item.type = "image") {
-            ShowEmptyPreview("[图片加载失败]")
+            ShowEmptyPreview(Tr("msg.imageLoadFail"))
             return
         }
     } else if (imgList.Length > 1) {
@@ -524,7 +712,7 @@ UpdatePreview() {
             ShowImageGrid(imgList)
             if (item.type = "files") {
                 previewImgList := imgList
-                btnPreviewMode.Text := "文件列表"
+                btnPreviewMode.Text := Tr("btn.fileList")
                 ShowPreviewModeButton()
             }
             return
@@ -539,12 +727,12 @@ UpdatePreview() {
             for p in item.data
                 lines .= (A_Index > 1 ? "`n" : "") p
             previewOriginal := lines
-            btnPreviewMode.Text := "图片预览"
+            btnPreviewMode.Text := Tr("btn.imagePreview")
             if (previewImgList.Length > 0)
                 ShowPreviewModeButton()
             LoadPreviewEditor(previewOriginal)
         case "image":
-            ShowEmptyPreview("[图片加载失败]")
+            ShowEmptyPreview(Tr("msg.imageLoadFail"))
     }
 }
 
@@ -569,7 +757,7 @@ ShowPreviewModeButton() {
     btnPreviewMode.Move(pvX, pvY + pvH - 24, 92, 22)
     btnPreviewMode.Opt("-Hidden")
     ; 提示文本右移，避开模式按钮，避免遮挡
-    picHint.Value := "点击查看大图"
+    picHint.Value := Tr("hint.clickBig")
     picHint.Move(pvX + 100, pvY + pvH - 20, Max(60, pvW - 100), 18)
     previewHasModeBtn := true
 }
@@ -589,7 +777,7 @@ UpdatePreviewButtons() {
     } else {
         btnSavePrev.Move(pvX + Max(0, pvW - 100), by, 100, 22)
     }
-    btnSavePrev.Text := "保存修改"
+    btnSavePrev.Text := Tr("btn.saveChanges")
     btnSavePrev.Enabled := previewDirty
     btnSavePrev.Opt("-Hidden")
 }
@@ -606,7 +794,7 @@ PreviewSelectionChanged() {
     global previewIdx, previewRow, previewDirty, lv
     idx := SelectedIndex()
     if (previewDirty && idx != previewIdx) {
-        r := MsgBox("预览内容已修改但未保存。`n`n是：保存修改`n否：放弃修改`n取消：返回当前项", "未保存的修改", "YesNoCancel Icon!")
+        r := MsgBox(Tr("msg.unsaved"), Tr("title.unsaved"), "YesNoCancel Icon!")
         if (r = "Cancel") {
             if (previewRow > 0)
                 lv.Modify(previewRow, "Select Vis")
@@ -649,7 +837,7 @@ SavePreviewChange() {
     text := StrReplace(editPrev.Value, "`r`n", "`n")
     if (previewKind = "text") {
         if (text = "") {
-            MsgBox "文本内容不能为空。", "无法保存", "Icon!"
+            MsgBox Tr("msg.emptyText"), Tr("title.cannotSave"), "Icon!"
             return false
         }
         data := text
@@ -662,7 +850,7 @@ SavePreviewChange() {
                 data.Push(p)
         }
         if (data.Length = 0) {
-            MsgBox "文件列表不能为空。", "无法保存", "Icon!"
+            MsgBox Tr("msg.emptyFiles"), Tr("title.cannotSave"), "Icon!"
             return false
         }
         sig := Join(data, "`n")
@@ -674,7 +862,7 @@ SavePreviewChange() {
         UpdatePreviewButtons()
         return true
     }
-    r := MsgBox("请选择保存方式：`n`n是：新增一条记录`n否：替换当前记录`n取消：不保存", "保存修改", "YesNoCancel Icon!")
+    r := MsgBox(Tr("msg.saveMode"), Tr("title.saveChanges"), "YesNoCancel Icon!")
     if (r = "Cancel")
         return false
     previewDirty := false
@@ -721,9 +909,9 @@ ShowImageGrid(imgList) {
         pic.Opt("-Hidden")
     }
     if (i < imgList.Length)
-        picHint.Value := "共 " imgList.Length " 张图片（显示前 " i " 张） · 点击查看大图"
+        picHint.Value := TrF("hint.gridSome", imgList.Length, i)
     else
-        picHint.Value := "共 " imgList.Length " 张图片 · 点击查看大图"
+        picHint.Value := TrF("hint.gridAll", imgList.Length)
     picHint.Move(pvX, pvY + pvH - 20, pvW, 18)
     picHint.Opt("-Hidden")
 }
@@ -835,11 +1023,11 @@ ShowBigPreview(path := "") {
             return
     }
     if !IsObject(bigGui) {
-        bigGui := Gui("+Resize", "图片预览")
+        bigGui := Gui("+Resize", Tr("big.title"))
         bigGui.BackColor := C_BG
-        bigGui.SetFont("s9 c" C_MUTED)
-        bigGui.AddText("x0 y2 w600 Center", "滚轮缩放 · Esc 关闭")
-        bigGui.SetFont("s10 c" C_TEXT)
+        bigGui.SetFont("s9 c" C_MUTED, UI_FONT)
+        bigGui.AddText("x0 y2 w600 Center", Tr("big.hint"))
+        bigGui.SetFont("s10 c" C_TEXT, UI_FONT)
         bigPic := bigGui.AddPicture("x0 y20 w600 h400 Background" C_IMAGEBG, "")
         bigGui.OnEvent("Close", (*) => bigGui.Hide())
         bigGui.OnEvent("Size", BigResize)
@@ -901,7 +1089,7 @@ BigRender() {
     if r {
         bigPic.Move((cw - r.w) // 2, 20 + (ch - 38 - r.h) // 2, r.w, r.h)
         bigPic.Value := "HBITMAP:*" r.hBmp   ; 控件接管位图并自动释放，脚本不可再 DeleteObject
-        bigGui.Title := "图片预览 " bigNatW "x" bigNatH " — " Round(scale * 100) "%（滚轮缩放，Esc 关闭）"
+        bigGui.Title := TrF("big.titleFmt", bigNatW, bigNatH, Round(scale * 100))
     }
 }
 
@@ -1025,25 +1213,25 @@ ClearHistory(keepPinned) {
 
 ; ---- 清空全部记录（含钉住），不可恢复 ----
 ClearAllRecords() {
-    r := MsgBox("确定清空全部剪贴板记录吗？`n`n这将删除所有记录（包括钉住项）及其图片文件，`n删除后不可恢复！`n`n建议先「导出记录」备份。", "清空记录 — 不可恢复", "YesNo Icon! Default2")
+    r := MsgBox(Tr("msg.clearAll"), Tr("title.clearAll"), "YesNo Icon! Default2")
     if (r != "Yes")
         return
     ClearHistory(false)
-    TrayTip("已清空全部记录", "octopus-clipboard", "Iconi")
+    TrayTip(Tr("tip.cleared"), "octopus-clipboard", "Iconi")
 }
 
 ; ---- 导出记录为自包含备份文件（图片以 base64 内嵌） ----
 ExportHistory() {
     global history, DATA_DIR
     defaultName := "octopus-clipboard-backup-" A_YYYY A_MM A_DD "-" A_Hour A_Min A_Sec ".ahkcb"
-    path := FileSelect("S16", DATA_DIR "\" defaultName, "导出剪贴板记录", "剪贴板备份 (*.ahkcb):*.ahkcb")
+    path := FileSelect("S16", DATA_DIR "\" defaultName, Tr("dlg.exportTitle"), Tr("dlg.backupFilter"))
     if (path = "")
         return
     if !RegExMatch(path, "\.ahkcb$")
         path .= ".ahkcb"
     f := FileOpen(path, "w", "UTF-8")
     if !IsObject(f) {
-        MsgBox "无法写入文件：`n" path, "导出失败", "Icon!"
+        MsgBox Tr("msg.writeFail") path, Tr("title.exportFail"), "Icon!"
         return
     }
     f.WriteLine("OCTOPUS-CLIPBOARD-BACKUP-v1")
@@ -1066,24 +1254,24 @@ ExportHistory() {
         f.WriteLine(item.type "`t" dataType "`t" item.pinned "`t" item.time "`t" B64Encode(meta) "`t" imgB64)
     }
     f.Close()
-    TrayTip("已导出 " history.Length " 条记录`n" path, "octopus-clipboard", "Iconi")
+    TrayTip(TrF("tip.exported", history.Length) path, "octopus-clipboard", "Iconi")
 }
 
 ; ---- 从备份文件导入记录（合并到现有，自动去重） ----
 ImportHistory() {
     global history, IMG_DIR
-    path := FileSelect("1", , "选择备份文件", "剪贴板备份 (*.ahkcb):*.ahkcb")
+    path := FileSelect("1", , Tr("dlg.importTitle"), Tr("dlg.backupFilter"))
     if (path = "")
         return
     f := FileOpen(path, "r", "UTF-8")
     if !IsObject(f) {
-        MsgBox "无法读取文件：`n" path, "导入失败", "Icon!"
+        MsgBox Tr("msg.readFail") path, Tr("title.importFail"), "Icon!"
         return
     }
     header := Trim(f.ReadLine(), "`r`n")
     if (header != "OCTOPUS-CLIPBOARD-BACKUP-v1" && header != "AHKCLIP-BACKUP-v1") {
         f.Close()
-        MsgBox "不是有效的 octopus-clipboard 备份文件。", "导入失败", "Icon!"
+        MsgBox Tr("msg.invalidBackup"), Tr("title.importFail"), "Icon!"
         return
     }
     cntLine := Trim(f.ReadLine(), "`r`n")
@@ -1137,7 +1325,7 @@ ImportHistory() {
     f.Close()
     SaveHistory(true)
     RefreshList()
-    TrayTip("已导入 " imported " 条记录（含 " images " 张图片）", "octopus-clipboard", "Iconi")
+    TrayTip(TrF("tip.imported", imported, images), "octopus-clipboard", "Iconi")
 }
 
 SetAutostart(on) {
@@ -1145,11 +1333,11 @@ SetAutostart(on) {
     if on {
         if !FileExist(lnk)
             FileCreateShortcut(A_ScriptFullPath, lnk, A_ScriptDir)
-        A_TrayMenu.Check("开机自启")
+        A_TrayMenu.Check(Tr("tray.autostart"))
     } else {
         if FileExist(lnk)
             FileDelete(lnk)
-        A_TrayMenu.Uncheck("开机自启")
+        A_TrayMenu.Uncheck(Tr("tray.autostart"))
     }
 }
 
@@ -1168,27 +1356,28 @@ ShowSettings() {
 
     chkValue := FileExist(A_Startup "\octopus-clipboard.lnk") ? 1 : 0
     if !IsObject(setGui) {
-        setGui := Gui("+OwnDialogs", "octopus-clipboard 设置")
+        setGui := Gui("+OwnDialogs", Tr("settings.title"))
         setGui.BackColor := C_BG
-        setGui.SetFont("s9 c" C_TEXT, "Microsoft YaHei UI")
+        setGui.SetFont("s9 c" C_TEXT, UI_FONT)
         setGui.SetFont("s9 c" C_ACCENT)
-        setGui.AddGroupBox("x12 y10 w476 h96", "常规")
+        setGui.AddGroupBox("x12 y10 w476 h96", Tr("settings.general"))
         setGui.SetFont("s9 c" C_TEXT)
-        setGui.AddText("x24 y32 w215", "最大记录条数（0-999，0=不限）：")
+        setGui.AddText("x24 y32 w215", Tr("settings.maxRecords"))
         edMax := setGui.AddEdit("x244 y28 w70 Background" C_SURFACE, MAX_ITEMS)
-        chkAuto := setGui.AddCheckBox("x24 y66 w200", "开机自启动")
-        setGui.AddText("x230 y68 w240 c" C_MUTED, "设置保存在 settings.ini")
+        chkAuto := setGui.AddCheckBox("x24 y66 w200", Tr("settings.autostart"))
+        setGui.AddText("x230 y68 w240 c" C_MUTED, Tr("settings.fileNote"))
+        setGui.AddButton("x230 y88 w240 h16", Tr("settings.btnLanguage")).OnEvent("Click", (*) => ToggleLanguage())
 
         setGui.SetFont("s9 c" C_ACCENT)
-        setGui.AddGroupBox("x12 y116 w476 h424", "快捷键")
+        setGui.AddGroupBox("x12 y116 w476 h424", Tr("settings.hotkeys"))
         setGui.SetFont("s9 c" C_MUTED)
-        setGui.AddText("x24 y132 w450 c" C_MUTED, "左侧：快捷键控件直接按键录入　右侧：点击「选择」从列表勾选（可选 Esc 等键）")
+        setGui.AddText("x24 y132 w450 c" C_MUTED, Tr("settings.hkHelpTop"))
         setGui.SetFont("s9 c" C_TEXT)
 
         AddHotkeyRow(setGui, "ShowHistory", "x24 y158 w110", "x140 y154 w150", "x300 y154 w120", true)
-        setGui.AddText("x428 y158 w56 c" C_MUTED, "全局")
+        setGui.AddText("x428 y158 w56 c" C_MUTED, Tr("settings.global"))
 
-        setGui.AddText("x24 y186 w440 c" C_MUTED, "历史窗口内（仅对应窗口 / 控件生效）")
+        setGui.AddText("x24 y186 w440 c" C_MUTED, Tr("settings.scopeMain"))
         AddHotkeyRow(setGui, "Paste",     "x24 y210 w110", "x140 y206 w150", "x300 y206 w120")
         AddHotkeyRow(setGui, "HideMain",  "x24 y238 w110", "x140 y234 w150", "x300 y234 w120")
         AddHotkeyRow(setGui, "Delete",    "x24 y266 w110", "x140 y262 w150", "x300 y262 w120")
@@ -1196,15 +1385,15 @@ ShowSettings() {
         AddHotkeyRow(setGui, "CopyOnly",  "x24 y322 w110", "x140 y318 w150", "x300 y318 w120")
         AddHotkeyRow(setGui, "SelectAll", "x24 y350 w110", "x140 y346 w150", "x300 y346 w120")
 
-        setGui.AddText("x24 y382 w440 c" C_MUTED, "大图预览窗口内")
+        setGui.AddText("x24 y382 w440 c" C_MUTED, Tr("settings.scopeBig"))
         AddHotkeyRow(setGui, "HideBig", "x24 y404 w110", "x140 y400 w150", "x300 y400 w120")
 
-        setGui.AddText("x24 y440 w450 c" C_MUTED, "点击「选择」按钮可从列表勾选常用键，含 Esc 等控件无法直接录入的键。")
-        setGui.AddText("x24 y462 w450 c" C_MUTED, "勾选后即刻同步到左侧控件，保存后立即生效。")
+        setGui.AddText("x24 y440 w450 c" C_MUTED, Tr("settings.hkHelpBottom"))
+        setGui.AddText("x24 y462 w450 c" C_MUTED, Tr("settings.hkHelpSync"))
 
-        setGui.AddButton("x12 y552 w90 h28", "恢复默认").OnEvent("Click", ResetHotkeyDefaults)
-        btnSave := setGui.AddButton("x330 y552 w80 h28 Default", "保存")
-        setGui.AddButton("x418 y552 w60 h28", "取消").OnEvent("Click", (*) => HideSettings())
+        setGui.AddButton("x12 y552 w90 h28", Tr("settings.btnRestore")).OnEvent("Click", ResetHotkeyDefaults)
+        btnSave := setGui.AddButton("x330 y552 w80 h28 Default", Tr("settings.btnSave"))
+        setGui.AddButton("x418 y552 w60 h28", Tr("settings.btnCancel")).OnEvent("Click", (*) => HideSettings())
         btnSave.OnEvent("Click", SaveSettings)
         setGui.OnEvent("Close", (*) => HideSettings())
         ; 不绑定 Escape：Esc 是可配置的快捷键，录入时会误关窗口。
@@ -1253,15 +1442,15 @@ OpenHotkeyPicker(id) {
     global C_BG, C_SURFACE, C_TEXT, C_MUTED, C_ACCENT
     pickerId := id
     if !IsObject(pickerGui) {
-        pickerGui := Gui("+OwnDialogs", "选择快捷键")
+        pickerGui := Gui("+OwnDialogs", Tr("picker.title"))
         pickerGui.BackColor := C_BG
-        pickerGui.SetFont("s9 c" C_TEXT, "Microsoft YaHei UI")
+        pickerGui.SetFont("s9 c" C_TEXT, UI_FONT)
 
-        pickerGui.AddText("x16 y14 w470", "勾选修饰键（可多选）+ 选择主键（单选），下方自动组合成快捷键。")
+        pickerGui.AddText("x16 y14 w470", Tr("picker.help"))
 
         ; ---- 修饰键区 ----
         pickerGui.SetFont("s9 c" C_ACCENT)
-        pickerGui.AddGroupBox("x12 y42 w476 h60", "修饰键（可多选）")
+        pickerGui.AddGroupBox("x12 y42 w476 h60", Tr("picker.modifiers"))
         pickerGui.SetFont("s9 c" C_TEXT)
         for m in PICKER_MODS {
             sym := m[1], name := m[2]
@@ -1273,9 +1462,9 @@ OpenHotkeyPicker(id) {
 
         ; ---- 主键区 ----
         pickerGui.SetFont("s9 c" C_ACCENT)
-        pickerGui.AddGroupBox("x12 y110 w300 h270", "主键（单选）")
+        pickerGui.AddGroupBox("x12 y110 w300 h270", Tr("picker.baseKey"))
         pickerGui.SetFont("s9 c" C_TEXT)
-        pickerLV := pickerGui.AddListView("x24 y132 w276 h236 -Multi -Grid NoSortHdr Background" C_SURFACE " c" C_TEXT, ["按键"])
+        pickerLV := pickerGui.AddListView("x24 y132 w276 h236 -Multi -Grid NoSortHdr Background" C_SURFACE " c" C_TEXT, [Tr("picker.keyCol")])
         for k in PICKER_BASE
             pickerLV.Add("", FormatHotkey(k))
         pickerLV.OnEvent("ItemSelect", PickerListSelect)
@@ -1283,23 +1472,23 @@ OpenHotkeyPicker(id) {
 
         ; ---- 组合结果区 ----
         pickerGui.SetFont("s9 c" C_ACCENT)
-        pickerGui.AddGroupBox("x320 y110 w168 h270", "组合结果")
+        pickerGui.AddGroupBox("x320 y110 w168 h270", Tr("picker.result"))
         pickerGui.SetFont("s9 c" C_TEXT)
-        pickerGui.AddText("x332 y134 w144", "AHK 键名：")
+        pickerGui.AddText("x332 y134 w144", Tr("picker.ahkName"))
         pickerOut := pickerGui.AddEdit("x332 y156 w144 h26 ReadOnly Background" C_SURFACE, "")
-        pickerGui.AddText("x332 y196 w144", "显示为：")
+        pickerGui.AddText("x332 y196 w144", Tr("picker.display"))
         pickerPreview := pickerGui.AddText("x332 y218 w144 h40", "")
 
         pickerGui.SetFont("s9 c" C_MUTED)
-        pickerGui.AddText("x16 y392 w270", "提示：不选修饰键即为单独主键（如 Esc）。")
-        pickerGui.AddButton("x300 y388 w90 h30", "确定").OnEvent("Click", PickerConfirm)
-        pickerGui.AddButton("x398 y388 w80 h30", "取消").OnEvent("Click", (*) => pickerGui.Hide())
+        pickerGui.AddText("x16 y392 w270", Tr("picker.tip"))
+        pickerGui.AddButton("x300 y388 w90 h30", Tr("picker.ok")).OnEvent("Click", PickerConfirm)
+        pickerGui.AddButton("x398 y388 w80 h30", Tr("settings.btnCancel")).OnEvent("Click", (*) => pickerGui.Hide())
         pickerGui.OnEvent("Close", (*) => pickerGui.Hide())
         ; 不绑定 Escape：避免误关
     }
     ; 反解析当前快捷键 -> 修饰键勾选 + 主键选中
     PickerLoadValue(HK_EDIT[id])
-    pickerGui.Title := "选择快捷键 — " HK_LABEL[id]
+    pickerGui.Title := Tr("picker.title") " — " HK_LABEL[id]
     pickerGui.Show("w500 h428")
 }
 
@@ -1345,7 +1534,7 @@ PickerBuild() {
     base := (row > 0 && row <= PICKER_BASE.Length) ? PICKER_BASE[row] : ""
     if (base = "") {
         pickerOut.Value := ""
-        pickerPreview.Value := "（请选择主键）"
+        pickerPreview.Value := Tr("picker.noBase")
         return
     }
     key := NormalizeHotkey(mods base)
@@ -1362,7 +1551,7 @@ PickerConfirm(*) {
     global pickerGui, pickerOut, pickerId
     key := Trim(pickerOut.Value)
     if (key = "" || !IsValidHotkey(key)) {
-        MsgBox "请先勾选修饰键并选择主键，组合出有效快捷键。", "选择快捷键", "Icon!"
+        MsgBox Tr("msg.pickerInvalid"), Tr("picker.title"), "Icon!"
         return
     }
     SetHotkeyValue(pickerId, key)
@@ -1375,7 +1564,7 @@ AddHotkeyRow(g, id, labelOpts, hotkeyOpts, btnOpts, globalRow := false) {
     hkCtrl := g.AddHotkey(hotkeyOpts, HK_KEYS[id])
     HK_CTRL[id] := hkCtrl
     HK_EDIT[id] := HK_KEYS[id]
-    btn := g.AddButton(btnOpts, "选择...")
+    btn := g.AddButton(btnOpts, Tr("btn.selectDots"))
     HK_BTN[id] := btn
     btn.OnEvent("Click", (*) => OpenHotkeyPicker(id))
     ; 左侧控件录入后，回写值并刷新右侧按钮文字
@@ -1397,7 +1586,7 @@ UpdatePickButton(id) {
     global HK_BTN, HK_EDIT
     if !HK_BTN.Has(id)
         return
-    HK_BTN[id].Text := "选择 " FormatHotkey(HK_EDIT[id])
+    HK_BTN[id].Text := TrF("btn.select", FormatHotkey(HK_EDIT[id]))
 }
 
 ResetHotkeyDefaults(*) {
@@ -1411,7 +1600,7 @@ SaveSettings(*) {
 
     v := Trim(edMax.Value)
     if !RegExMatch(v, "^\d+$") {
-        MsgBox "最大记录条数必须是 0-999 的整数。", "octopus-clipboard 设置", "Icon!"
+        MsgBox Tr("msg.maxInvalid"), Tr("settings.title"), "Icon!"
         return
     }
     newMax := Min(999, Max(0, Integer(v)))
@@ -1476,12 +1665,12 @@ ValidateHotkeySet(keys, showMsg) {
         k := keys[id]
         if !IsValidHotkey(k) {
             if showMsg
-                MsgBox "快捷键“" HK_LABEL[id] "”为空或不完整。", "快捷键无效", "Icon!"
+                MsgBox TrF("msg.hkEmpty", HK_LABEL[id]), Tr("title.hkInvalid"), "Icon!"
             return false
         }
         if (HK_REQUIRE_MOD.Has(id) && !RegExMatch(k, "[!^+#]")) {
             if showMsg
-                MsgBox "快捷键“" HK_LABEL[id] "”必须包含 Ctrl / Alt / Shift / Win 中的至少一个修饰键。", "快捷键无效", "Icon!"
+                MsgBox TrF("msg.hkNeedMod", HK_LABEL[id]), Tr("title.hkInvalid"), "Icon!"
             return false
         }
     }
@@ -1489,7 +1678,7 @@ ValidateHotkeySet(keys, showMsg) {
     for id in HK_IDS {
         if (id != "ShowHistory" && keys[id] = showKey) {
             if showMsg
-                MsgBox "“" HK_LABEL["ShowHistory"] "（全局）”不能与“" HK_LABEL[id] "”使用相同快捷键。", "快捷键冲突", "Icon!"
+                MsgBox TrF("msg.hkConflictGlobal", HK_LABEL["ShowHistory"], HK_LABEL[id]), Tr("title.hkConflict"), "Icon!"
             return false
         }
     }
@@ -1498,7 +1687,7 @@ ValidateHotkeySet(keys, showMsg) {
         sig := HK_CONTEXT[id] "`n" keys[id]
         if seen.Has(sig) {
             if showMsg
-                MsgBox "同一范围内存在重复快捷键，请为“" HK_LABEL[id] "”换一个组合。", "快捷键冲突", "Icon!"
+                MsgBox TrF("msg.hkConflictDup", HK_LABEL[id]), Tr("title.hkConflict"), "Icon!"
             return false
         }
         seen[sig] := true
@@ -1608,7 +1797,7 @@ BigPreviewActive() {
 
 FormatHotkey(key) {
     if (key = "")
-        return "未设置"
+        return Tr("hk.notSet")
     text := ""
     if InStr(key, "^")
         text .= "Ctrl+"
@@ -1632,7 +1821,7 @@ UpdateHint() {
     pin   := FormatHotkey(HK_KEYS["Pin"])
     del   := FormatHotkey(HK_KEYS["Delete"])
     hide  := FormatHotkey(HK_KEYS["HideMain"])
-    hint.Value := paste " 粘贴 · 双击图片看大图 · 右键菜单：仅复制/打开/编辑 · " pin " 钉住 · " del " 删除 · " hide " 隐藏"
+    hint.Value := TrF("hint.main", paste, pin, del, hide)
 }
 
 ; ----------------------- 剪贴板读写 -----------------------------------
