@@ -1,0 +1,35 @@
+# ===== AutoHotkey 编译产物 =====
+*.exe
+*.ahk.bak
+*.bak
+
+# ===== 脚本运行时临时文件 =====
+*.tmp
+*.temp
+~$*
+
+# ===== 数据 / 缓存（若在脚本目录生成）=====
+*.log
+*.dat
+*.db
+*.sqlite
+config.ini
+settings.ini
+
+# ===== 快捷方式 =====
+*.lnk
+*.url
+
+# ===== 系统 / 编辑器文件 =====
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
+*~
+
+# ===== IDE / 工具目录 =====
+.vscode/
+.idea/
+
+# ===== WorkBuddy 工作区数据（非项目源码）=====
+.workbuddy/
